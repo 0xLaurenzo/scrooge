@@ -231,32 +231,66 @@ CREATE POLICY "Users can update own requests"
 ### Phase 1: ERC20 Transfer Support (PoC)
 
 **Token List Sources:**
-1. **Primary**: [Uniswap Token Lists](https://tokenlists.org/)
+1. **Primary**: [Uniswap Default Token List](https://gateway.ipfs.io/ipns/tokens.uniswap.org)
    - Well-maintained, standardized format
    - Covers major tokens across all supported chains
    - Includes token metadata (name, symbol, decimals, logo)
+   - ~400 verified tokens across multiple chains
 
-2. **Secondary**: Popular token addresses hardcoded
-   - USDC, USDT, DAI, WETH on each chain
-   - Ensures core stablecoins always available
-   - Fallback for critical tokens
+2. **Fallback**: Hardcoded Core Tokens
+   - Essential stablecoins and wrapped native tokens per chain
+   - Guarantees availability even if primary source fails
+   - Minimal set for reliability:
+     ```typescript
+     const FALLBACK_TOKENS = {
+       // Mainnet
+       1: [
+         { symbol: 'USDC', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
+         { symbol: 'USDT', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
+         { symbol: 'DAI', address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18 },
+         { symbol: 'WETH', address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', decimals: 18 }
+       ],
+       // Arbitrum
+       42161: [
+         { symbol: 'USDC', address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', decimals: 6 },
+         { symbol: 'USDT', address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', decimals: 6 },
+         { symbol: 'DAI', address: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', decimals: 18 },
+         { symbol: 'WETH', address: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', decimals: 18 }
+       ],
+       // ... other chains
+     }
+     ```
 
-**Implementation:**
+**Implementation Approach:**
 ```typescript
-// Token list service
-interface Token {
-  address: string
-  chainId: number
-  symbol: string
-  name: string
-  decimals: number
-  logoURI?: string
+// Token service implementation
+class TokenService {
+  private cachedTokens: Map<number, Token[]> = new Map()
+  
+  async getTokensForChain(chainId: number): Promise<Token[]> {
+    try {
+      // 1. Check cache first
+      if (this.cachedTokens.has(chainId)) {
+        return this.cachedTokens.get(chainId)!
+      }
+      
+      // 2. Try to fetch from Supabase (cached Uniswap list)
+      const supabaseTokens = await this.fetchFromSupabase(chainId)
+      if (supabaseTokens.length > 0) {
+        this.cachedTokens.set(chainId, supabaseTokens)
+        return supabaseTokens
+      }
+      
+      // 3. Fall back to hardcoded tokens
+      return FALLBACK_TOKENS[chainId] || []
+    } catch (error) {
+      // Always return fallback tokens on error
+      return FALLBACK_TOKENS[chainId] || []
+    }
+  }
 }
 
-// Fetch from Uniswap default list
-const UNISWAP_LIST_URL = "https://gateway.ipfs.io/ipns/tokens.uniswap.org"
-
-// Store token list in Supabase for caching
+// Database schema remains the same
 CREATE TABLE supported_tokens (
   address TEXT NOT NULL,
   chain_id INTEGER NOT NULL,
@@ -269,6 +303,11 @@ CREATE TABLE supported_tokens (
   PRIMARY KEY (address, chain_id)
 );
 ```
+
+**Token List Refresh Strategy (PoC):**
+- Manual refresh via admin command for POC
+- Fetch Uniswap list and update Supabase cache
+- Can be automated with scheduled Edge Function post-POC
 
 ### Phase 2: Swap Integration (Future)
 

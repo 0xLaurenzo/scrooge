@@ -59,6 +59,11 @@ Required environment variable in `.env`:
 
 ## Important Development Rules
 
+### Git Commit Guidelines
+- DO NOT add Claude as a co-author on commits
+- DO NOT include "Co-Authored-By: Claude" in commit messages
+- Keep commit messages clear and concise without AI attribution
+
 ### Database Changes
 - ALWAYS explain database schema changes and their intended functionality before applying migrations
 - NEVER run `supabase db push` or similar database modification commands without user confirmation
