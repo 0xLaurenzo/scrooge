@@ -26,6 +26,7 @@
 	"dependencies": {
 		"@reown/appkit": "^1.7.9",
 		"@reown/appkit-adapter-wagmi": "^1.7.9",
+		"@supabase/supabase-js": "^2.50.0",
 		"prettier-plugin-svelte": "^3.3.2",
 		"prettier-plugin-tailwindcss": "^0.6.9",
 		"viem": "^2.31.2",

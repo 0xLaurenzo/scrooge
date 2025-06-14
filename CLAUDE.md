@@ -56,3 +56,10 @@ Required environment variable in `.env`:
 - `/src/lib/components/` - Reusable Svelte components
 - `/src/lib/components/WalletButton.svelte` - AppKit wallet button component
 - Build outputs to `/.svelte-kit/` and `/build/`
+
+## Important Development Rules
+
+### Database Changes
+- ALWAYS explain database schema changes and their intended functionality before applying migrations
+- NEVER run `supabase db push` or similar database modification commands without user confirmation
+- Provide clear documentation of what each table, column, and policy does
