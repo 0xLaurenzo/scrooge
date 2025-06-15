@@ -2,21 +2,35 @@
 
 ## Overview
 
-Scrooge is a crypto payment request application built on EVM-compatible blockchains. The app enables users to create, manage, and fulfill payment requests using ERC20 tokens through a simple web interface.
+Scrooge is a decentralized crypto payment request application built on EVM-compatible blockchains. The app enables users to create, manage, and fulfill payment requests using ERC20 tokens through a simple web interface, with all payment request data stored on IPFS and payments handled through smart contracts.
+
+### Key Architecture Principles
+
+1. **No Wallet Required for Creation**: Users can create payment requests without connecting a wallet or signing transactions
+2. **Decentralized Storage**: All payment request data is stored on IPFS, ensuring censorship resistance
+3. **Smart Contract Payments**: Payments go through a smart contract that automatically collects protocol fees
+4. **Event-Driven Updates**: Blockchain events update payment status, no manual webhooks needed
+5. **Multi-Chain Support**: Same contract deployed across all supported EVM chains
+6. **Minimal Database**: Supabase used only for caching/indexing, not as source of truth
 
 ## Architecture
 
 ### Technology Stack
 - **Frontend**: SvelteKit 5 with TypeScript
-- **Backend**: Supabase (PostgreSQL database + Edge Functions)
+- **Storage**: IPFS for payment request data (via Pinata/Infura)
+- **Smart Contracts**: Solidity contracts for payment processing with built-in fees
+- **Database**: Supabase (PostgreSQL for indexing and caching only)
 - **Web3 Integration**: AppKit (Reown/WalletConnect) with Wagmi/Viem
 - **Styling**: Tailwind CSS
 - **Supported Networks**: Multi-chain EVM support (Mainnet, Arbitrum, Optimism, Polygon, Base + testnets)
 
-### Current Infrastructure
+### Decentralized Infrastructure
+- IPFS for permanent, censorship-resistant storage of payment requests
+- Smart contracts handle all payments with automatic fee collection
+- Supabase serves as an indexing layer for performance and search
+- Event-driven architecture monitors blockchain events
 - AppKit configured for wallet connections and chain switching
 - Multi-chain support with 15+ EVM networks
-- Professional wallet UI with automatic reconnection
 
 ## User Flows
 
@@ -25,7 +39,7 @@ Scrooge is a crypto payment request application built on EVM-compatible blockcha
 **User Story**: As a user, I want to create a payment request so that I can receive payments from others.
 
 **Flow**:
-1. User connects wallet via AppKit
+1. User connects wallet via AppKit (for auto-filling address only)
 2. User navigates to "Create Request" page
 3. User fills out request form:
    - Recipient address (auto-filled from connected wallet)
@@ -33,15 +47,20 @@ Scrooge is a crypto payment request application built on EVM-compatible blockcha
    - Amount (fixed amount or "allow payer to specify")
    - Description/memo (optional)
    - Expiry date (optional)
-4. User submits form
-5. System generates unique request ID and shareable link
+4. User submits form (NO TRANSACTION REQUIRED)
+5. System:
+   - Uploads request data to IPFS
+   - Generates unique request ID from IPFS CID
+   - Caches data in Supabase for indexing
+   - Creates shareable link with IPFS CID
 6. User receives confirmation with link to share
 
 **Technical Requirements**:
 - Form validation for addresses, amounts, token contracts
-- Request data storage in Supabase PostgreSQL
-- Unique ID generation (UUID)
-- Shareable link generation
+- IPFS upload via Pinata/Infura (no gas costs)
+- Request data cached in Supabase for querying
+- Client-side ID generation from IPFS CID
+- Shareable link format: `/pay/[ipfsCID]`
 
 ### 2. Dashboard Flow
 
@@ -61,10 +80,11 @@ Scrooge is a crypto payment request application built on EVM-compatible blockcha
 7. User can cancel pending requests
 
 **Technical Requirements**:
-- Supabase RLS (Row Level Security) policies for wallet-based access
-- Real-time status updates via Supabase Realtime subscriptions
-- Request status tracking with database triggers
-- Filtering and pagination using Supabase queries
+- Query Supabase cache filtered by creator wallet address
+- Monitor blockchain events for payment status updates
+- Real-time updates when contract emits PaymentCompleted events
+- IPFS data retrieval for full request details
+- Filtering and pagination using Supabase queries on cached data
 
 ### 3. Payment Fulfillment Flow
 
@@ -84,40 +104,67 @@ Scrooge is a crypto payment request application built on EVM-compatible blockcha
    - Request is still valid (not expired/already paid)
    - Correct network selected
 6. Payer reviews transaction details
-7. Payer confirms and signs ERC20 transfer transaction
-8. System monitors transaction status
-9. On confirmation, request marked as "paid"
-10. Both parties receive confirmation
+7. Payer approves token spending to smart contract
+8. Payer confirms payment through smart contract (includes fee)
+9. Contract transfers tokens and emits PaymentCompleted event
+10. System monitors event and updates status
+11. Both parties receive confirmation
 
 **Technical Requirements**:
+- Fetch request data from IPFS using CID from URL
 - ERC20 balance checking via Wagmi hooks
-- Transaction building and signing via Wagmi
-- Transaction monitoring:
-  - Frontend: Real-time monitoring using Wagmi's waitForTransactionReceipt
-  - Backend: Webhook endpoint (Supabase Edge Function) for transaction confirmation
-- Status updates to database via API calls
+- Two-step transaction process:
+  1. ERC20 approve to smart contract
+  2. Contract payRequest function call
+- Event monitoring for PaymentCompleted events
+- Update cached status in Supabase when events detected
 - Network validation and switching prompts via AppKit
 
 ## Data Models
 
-### Payment Request
+### Decentralized Data Architecture
+
 ```typescript
-interface PaymentRequest {
-  id: string                    // Unique identifier
-  createdBy: string            // Creator wallet address
-  recipientAddress: string     // Payment recipient address
-  tokenAddress: string         // ERC20 token contract address
-  tokenSymbol: string          // Token symbol (ETH, USDC, etc.)
-  tokenDecimals: number        // Token decimals
-  amount?: string              // Fixed amount (in wei), null for flexible
-  description?: string         // Optional memo/description
-  createdAt: Date             // Creation timestamp
-  expiresAt?: Date            // Optional expiry date
-  status: 'pending' | 'paid' | 'expired' | 'cancelled'
-  paidBy?: string             // Payer wallet address
-  transactionHash?: string    // Payment transaction hash
-  paidAt?: Date              // Payment timestamp
-  chainId: number            // Network chain ID
+// Data stored on IPFS (immutable)
+interface IPFSPaymentRequest {
+  version: '1.0',
+  createdAt: number,           // Unix timestamp
+  creator: string,             // Creator wallet address  
+  recipient: string,           // Payment recipient address
+  chainId: number,             // Network chain ID
+  token: {
+    address: string,           // ERC20 token contract
+    symbol: string,            // Token symbol
+    decimals: number,          // Token decimals
+    name: string              // Token name
+  },
+  amount?: string,             // Fixed amount in wei (optional)
+  description?: string,        // Payment description
+  expiresAt?: number,         // Expiry timestamp (optional)
+  metadata?: Record<string, any> // Extensible metadata
+}
+
+// Data cached in Supabase (for indexing/querying)
+interface CachedPaymentRequest {
+  id: string,                  // Generated from IPFS CID
+  ipfsCID: string,            // IPFS content identifier
+  createdBy: string,          // Creator wallet (indexed)
+  recipientAddress: string,    // Recipient (for search)
+  chainId: number,            // Network (indexed)
+  tokenSymbol: string,        // For filtering
+  amount?: string,            // For filtering
+  createdAt: Date,           // For sorting
+  expiresAt?: Date,          // For expiry checks
+  
+  // Payment tracking (updated from blockchain events)
+  status: 'pending' | 'paid' | 'expired',
+  paidBy?: string,           // Payer wallet address
+  transactionHash?: string,   // Payment transaction
+  paidAt?: Date,             // Payment timestamp
+  blockNumber?: bigint,      // For event tracking
+  
+  // Cached IPFS data for performance
+  cachedData: IPFSPaymentRequest
 }
 ```
 
@@ -125,10 +172,11 @@ interface PaymentRequest {
 
 ### Pages/Routes Required
 - `/` - Landing page with app overview
-- `/create` - Payment request creation form
+- `/create` - Payment request creation form (no wallet required)
 - `/dashboard` - User dashboard for managing requests
-- `/request/[id]` - Public payment request page
-- `/request/[id]/success` - Payment confirmation page
+- `/pay/[cid]` - Public payment page (IPFS CID in URL)
+- `/pay/[cid]/success` - Payment confirmation page
+- `/api/ipfs/[cid]` - IPFS gateway fallback
 
 ### Components Required
 - `CreateRequestForm.svelte` - Request creation form
@@ -139,90 +187,291 @@ interface PaymentRequest {
 - `TransactionMonitor.svelte` - Transaction status tracking
 
 ### Services Required
-- `RequestService` - CRUD operations for payment requests
+- `IPFSService` - Upload/retrieve payment requests from IPFS
+- `RequestService` - Create requests (IPFS + cache), query cached data
+- `ContractService` - Interact with ScroogePayments smart contract
 - `TokenService` - ERC20 token information and balance checking
-- `TransactionService` - Transaction building and monitoring
+- `EventMonitorService` - Monitor blockchain for payment events
 - `ValidationService` - Address, amount, and request validation
 
 ## Backend Architecture
 
-### Data Storage (Supabase)
-- **Database**: PostgreSQL with Supabase
-- **Authentication**: Wallet-based authentication (no traditional auth needed)
-- **Row Level Security**: Policies based on wallet addresses
-- **Real-time**: Supabase Realtime for live updates
+### Decentralized Storage Architecture
+- **Primary Storage**: IPFS for all payment request data
+- **Smart Contracts**: Payment processing with automatic fees
+- **Indexing Layer**: Supabase PostgreSQL for caching and queries
+- **No Authentication Required**: Creating requests doesn't need wallet connection
+- **Event Monitoring**: Blockchain event listeners for payment tracking
 
-### Supabase Schema
+### Supabase Schema (Caching Layer Only)
 ```sql
--- Payment requests table
-CREATE TABLE payment_requests (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  created_by TEXT NOT NULL, -- wallet address
+-- Cached payment requests (indexing layer)
+CREATE TABLE payment_requests_cache (
+  id TEXT PRIMARY KEY, -- Generated from IPFS CID
+  ipfs_cid TEXT UNIQUE NOT NULL,
+  created_by TEXT NOT NULL, -- Creator wallet (indexed)
   recipient_address TEXT NOT NULL,
-  token_address TEXT NOT NULL,
-  token_symbol TEXT NOT NULL,
-  token_decimals INTEGER NOT NULL,
-  amount TEXT, -- nullable for flexible amounts
-  description TEXT,
+  chain_id INTEGER NOT NULL,
+  token_symbol TEXT,
+  amount TEXT, -- For filtering
   created_at TIMESTAMPTZ DEFAULT NOW(),
   expires_at TIMESTAMPTZ,
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'expired', 'cancelled')),
+  
+  -- Payment status (updated from blockchain events)
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'expired')),
   paid_by TEXT,
   transaction_hash TEXT,
   paid_at TIMESTAMPTZ,
-  chain_id INTEGER NOT NULL
+  block_number BIGINT,
+  
+  -- Cached IPFS data for performance
+  cached_data JSONB NOT NULL
 );
 
 -- Indexes for performance
-CREATE INDEX idx_created_by ON payment_requests(created_by);
-CREATE INDEX idx_status ON payment_requests(status);
-CREATE INDEX idx_chain_id ON payment_requests(chain_id);
+CREATE INDEX idx_created_by ON payment_requests_cache(created_by);
+CREATE INDEX idx_status ON payment_requests_cache(status);
+CREATE INDEX idx_chain_id ON payment_requests_cache(chain_id);
+CREATE INDEX idx_ipfs_cid ON payment_requests_cache(ipfs_cid);
 
--- RLS policies
-ALTER TABLE payment_requests ENABLE ROW LEVEL SECURITY;
+-- No RLS needed - all data is public on IPFS anyway
+-- This is just a performance cache
+```
 
--- Anyone can view requests (for payment links)
-CREATE POLICY "Requests are viewable by anyone" 
-  ON payment_requests FOR SELECT 
-  USING (true);
+### Smart Contract Architecture
 
--- Only creator can update their own requests
-CREATE POLICY "Users can update own requests" 
-  ON payment_requests FOR UPDATE 
-  USING (created_by = current_user_id());
+```solidity
+contract ScroogePayments {
+    uint256 public constant fee = 50; // 0.5% fee in basis points
+    address public immutable feeRecipient;
+    
+    event PaymentCompleted(
+        bytes32 indexed requestId,
+        address indexed payer,
+        address indexed recipient,
+        address token,
+        uint256 amount,
+        uint256 feeAmount,
+        string ipfsCID
+    );
+    
+    constructor(address _feeRecipient) {
+        feeRecipient = _feeRecipient;
+    }
+    
+    function payRequest(
+        string calldata ipfsCID,
+        address recipient,
+        address token,
+        uint256 amount
+    ) external {
+        bytes32 requestId = keccak256(abi.encodePacked(ipfsCID));
+        
+        uint256 feeAmount = (amount * fee) / 10000;
+        uint256 recipientAmount = amount - feeAmount;
+        
+        // Transfer tokens
+        IERC20(token).transferFrom(msg.sender, recipient, recipientAmount);
+        if (feeAmount > 0) {
+            IERC20(token).transferFrom(msg.sender, feeRecipient, feeAmount);
+        }
+        
+        emit PaymentCompleted(
+            requestId,
+            msg.sender,
+            recipient,
+            token,
+            recipientAmount,
+            feeAmount,
+            ipfsCID
+        );
+    }
+}
 ```
 
 ### Supabase Edge Functions
 
-1. **create-payment-request**
-   - Validates request data
-   - Creates payment request record
-   - Returns request ID and shareable link
+1. **cache-payment-request**
+   - Caches IPFS data after upload
+   - No authentication required
+   - Returns success confirmation
 
-2. **update-payment-status**
-   - Webhook endpoint for transaction confirmations
-   - Verifies transaction on-chain
-   - Updates request status to 'paid'
-   - Triggers notifications (if implemented)
+2. **get-user-requests**
+   - Queries cached requests by wallet
+   - Returns paginated results
+   - Supports filtering
 
-3. **get-user-requests**
-   - Returns paginated requests for a wallet address
-   - Supports filtering by status, date, token
+3. **update-payment-status**
+   - Called by event monitor
+   - Updates cached payment status
+   - No direct user access
 
-### Transaction Monitoring Strategy
+### Event Monitoring Strategy
 
-1. **Frontend Monitoring** (Primary)
-   - Uses Wagmi's `waitForTransactionReceipt` hook
-   - Provides immediate feedback to user
+1. **Multi-Chain Event Monitoring**
+   ```typescript
+   class EventMonitorService {
+     async monitorPaymentEvents(chainId: number) {
+       const client = getPublicClient({ chainId });
+       
+       // Watch for PaymentCompleted events
+       const unwatch = client.watchContractEvent({
+         address: CONTRACTS[chainId],
+         abi: ScroogePaymentsABI,
+         eventName: 'PaymentCompleted',
+         onLogs: (logs) => this.handlePaymentEvents(logs, chainId)
+       });
+     }
+     
+     async handlePaymentEvents(logs: Log[], chainId: number) {
+       for (const log of logs) {
+         const { requestId, payer, ipfsCID } = log.args;
+         
+         // Update cache in Supabase
+         await supabase
+           .from('payment_requests_cache')
+           .update({
+             status: 'paid',
+             paid_by: payer,
+             transaction_hash: log.transactionHash,
+             block_number: log.blockNumber,
+             paid_at: new Date()
+           })
+           .eq('id', requestId);
+       }
+     }
+   }
+   ```
+
+2. **Frontend Transaction Monitoring**
+   - Uses Wagmi's `waitForTransactionReceipt`
+   - Provides immediate feedback
    - Updates UI optimistically
-   - Handles network issues gracefully
 
-2. **Webhook Confirmation** (Backup)
-   - Supabase Edge Function endpoint
-   - Called by frontend after transaction confirmed
-   - Double-checks transaction on-chain
-   - Ensures database consistency
-   - Handles edge cases (frontend crashes, etc.)
+### IPFS Integration
+
+```typescript
+class IPFSService {
+  private pinataJWT: string;
+  private gateway: string = 'https://gateway.pinata.cloud/ipfs/';
+  
+  async uploadRequest(data: IPFSPaymentRequest): Promise<string> {
+    const response = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.pinataJWT}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        pinataContent: data,
+        pinataOptions: {
+          cidVersion: 1
+        },
+        pinataMetadata: {
+          name: `payment-request-${data.recipient}-${Date.now()}`
+        }
+      })
+    });
+    
+    const result = await response.json();
+    return result.IpfsHash;
+  }
+  
+  async retrieveRequest(cid: string): Promise<IPFSPaymentRequest> {
+    // Try multiple gateways for reliability
+    const gateways = [
+      `https://gateway.pinata.cloud/ipfs/${cid}`,
+      `https://ipfs.io/ipfs/${cid}`,
+      `https://cloudflare-ipfs.com/ipfs/${cid}`
+    ];
+    
+    for (const gateway of gateways) {
+      try {
+        const response = await fetch(gateway, { 
+          signal: AbortSignal.timeout(5000) 
+        });
+        if (response.ok) {
+          return await response.json();
+        }
+      } catch (error) {
+        continue; // Try next gateway
+      }
+    }
+    
+    throw new Error('Failed to retrieve from IPFS');
+  }
+}
+```
+
+### Request Creation Service (No Transaction)
+
+```typescript
+class RequestService {
+  async createRequest(formData: CreateRequestInput): Promise<{ cid: string, shareUrl: string }> {
+    // 1. Prepare IPFS data
+    const ipfsData: IPFSPaymentRequest = {
+      version: '1.0',
+      createdAt: Date.now(),
+      creator: formData.creatorAddress || 'anonymous',
+      recipient: formData.recipientAddress,
+      chainId: formData.chainId,
+      token: {
+        address: formData.tokenAddress,
+        symbol: formData.tokenSymbol,
+        decimals: formData.tokenDecimals,
+        name: formData.tokenName
+      },
+      amount: formData.amount,
+      description: formData.description,
+      expiresAt: formData.expiresAt?.getTime()
+    };
+    
+    // 2. Upload to IPFS (no blockchain transaction)
+    const cid = await ipfsService.uploadRequest(ipfsData);
+    
+    // 3. Cache in Supabase for indexing
+    const requestId = generateIdFromCID(cid);
+    await supabase.from('payment_requests_cache').insert({
+      id: requestId,
+      ipfs_cid: cid,
+      created_by: ipfsData.creator,
+      recipient_address: ipfsData.recipient,
+      chain_id: ipfsData.chainId,
+      token_symbol: ipfsData.token.symbol,
+      amount: ipfsData.amount,
+      created_at: new Date(ipfsData.createdAt),
+      expires_at: ipfsData.expiresAt ? new Date(ipfsData.expiresAt) : null,
+      status: 'pending',
+      cached_data: ipfsData
+    });
+    
+    // 4. Return shareable link
+    const shareUrl = `${window.location.origin}/pay/${cid}`;
+    return { cid, shareUrl };
+  }
+}
+```
+
+### Contract Deployment Strategy
+
+```typescript
+// Contract addresses per chain
+const SCROOGE_CONTRACTS: Record<number, Address> = {
+  1: '0x...', // Mainnet
+  42161: '0x...', // Arbitrum
+  10: '0x...', // Optimism
+  137: '0x...', // Polygon
+  8453: '0x...', // Base
+  // Testnets
+  11155111: '0x...', // Sepolia
+  421614: '0x...', // Arbitrum Sepolia
+  // ... other chains
+};
+
+// Same contract deployed on each chain
+// Fee recipient can be same address across chains
+// Or use a multi-sig for each chain
+```
 
 ## Areas Requiring Additional Specification
 
