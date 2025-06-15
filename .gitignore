@@ -1,5 +1,8 @@
 node_modules
 
+# Turbo
+.turbo
+
 # Output
 .output
 .vercel
@@ -7,6 +10,8 @@ node_modules
 .wrangler
 /.svelte-kit
 /build
+/out
+/dist
 
 # OS
 .DS_Store

@@ -1,35 +1,26 @@
 {
-	"name": "svelte-evm-template",
-	"private": true,
-	"version": "0.0.1",
-	"type": "module",
-	"scripts": {
-		"dev": "vite dev",
-		"build": "vite build",
-		"preview": "vite preview",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"fmt": "npx prettier . --write"
-	},
-	"devDependencies": {
-		"@sveltejs/adapter-auto": "^3.3.1",
-		"@sveltejs/kit": "^2.9.0",
-		"@sveltejs/vite-plugin-svelte": "^5.0.0",
-		"autoprefixer": "^10.4.20",
-		"postcss": "^8.4.49",
-		"svelte": "^5.0.0",
-		"svelte-check": "^4.0.0",
-		"tailwindcss": "^3.4.16",
-		"typescript": "^5.0.0",
-		"vite": "^6.0.0"
-	},
-	"dependencies": {
-		"@reown/appkit": "^1.7.9",
-		"@reown/appkit-adapter-wagmi": "^1.7.9",
-		"@supabase/supabase-js": "^2.50.0",
-		"prettier-plugin-svelte": "^3.3.2",
-		"prettier-plugin-tailwindcss": "^0.6.9",
-		"viem": "^2.31.2",
-		"wagmi": "^2.15.6"
-	}
+  "name": "scrooge",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": [
+    "web",
+    "contracts", 
+    "types"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "check": "turbo run check",
+    "lint": "turbo run lint",
+    "preview": "turbo run preview",
+    "test": "turbo run test",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=18"
+  }
 }

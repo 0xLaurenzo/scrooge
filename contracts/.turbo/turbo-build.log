@@ -1,0 +1,10 @@
+
+> @scrooge/contracts@0.0.1 build /Users/laurens/scrooge/contracts
+> forge build
+
+Warning: This is a nightly build of Foundry. It is recommended to use the latest stable version. Visit https://book.getfoundry.sh/announcements for more information. 
+To mute this warning set `FOUNDRY_DISABLE_NIGHTLY_WARNING` in your environment. 
+
+Compiling 23 files with Solc 0.8.23
+Solc 0.8.23 finished in 712.84ms
+Compiler run successful!

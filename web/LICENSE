@@ -1,0 +1,47 @@
+Business Source License 1.1
+
+Licensor: 0xLaurenzo
+
+Licensed Work: The contents of the `web/` directory in the `0xLaurenzo/scrooge` repository, including but not limited to source code, configuration files, and documentation.
+
+Additional Use Grant: None.
+
+Change Date: June 15, 2028
+
+Change License: Apache License, Version 2.0
+
+1. License Grant.
+
+The Licensor hereby grants you the rights to copy, modify, create derivative works, redistribute, and make non-production use of the Licensed Work. The rights granted are worldwide, non-exclusive, and royalty-free, subject to the terms and conditions of this License.
+
+2. Production Use License.
+
+The Licensor hereby grants you a license to use the Licensed Work in a production environment (Production Use), only under the terms of the Change License, after the Change Date. Until the Change Date, no right to Production Use is granted.
+
+3. Change License.
+
+Effective on the Change Date, the Licensed Work will be licensed under the Apache License, Version 2.0, which is an open source license as defined by the Open Source Initiative.
+
+4. Additional Use Grant.
+
+None.
+
+5. Limitations.
+
+You may not use the Licensed Work for Production Use except as expressly permitted by this License. Any attempt to use the Licensed Work for Production Use except as permitted under this License is a violation of this License.
+
+6. Trademarks.
+
+This License does not grant you any rights to use the Licensor’s trademarks or trade names.
+
+7. Termination.
+
+If you violate the terms of this License, your rights under this License will terminate automatically. The provisions of this License survive termination.
+
+8. Disclaimer of Warranty.
+
+THE LICENSED WORK IS PROVIDED "AS IS" WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+9. Limitation of Liability.
+
+IN NO EVENT WILL THE LICENSOR BE LIABLE FOR ANY DAMAGES, INCLUDING WITHOUT LIMITATION DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR EXEMPLARY DAMAGES ARISING OUT OF OR IN CONNECTION WITH THIS LICENSE OR THE USE OF THE LICENSED WORK.
