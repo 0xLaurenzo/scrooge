@@ -368,12 +368,289 @@ ADD COLUMN bridge_status TEXT;
    - Warn users about unverified tokens
    - Check for token scam databases
 
+## Payment Validation Rules (PoC)
+
+### Amount Validation
+
+**USD-Based Limits with Client-Side Price Fetching:**
+```typescript
+const VALIDATION_RULES = {
+  MIN_AMOUNT_USD: 1,      // $1 minimum to avoid dust payments
+  MAX_AMOUNT_USD: 10000,  // $10,000 maximum for safety
+  
+  // Price fetching config
+  PRICE_CACHE_DURATION_MS: 300000, // Cache prices for 5 minutes
+  PRICE_FETCH_TIMEOUT_MS: 5000,    // 5 second timeout for price API
+}
+```
+
+**Price Service Implementation:**
+```typescript
+interface TokenPrice {
+  usd: number
+  lastUpdated: Date
+}
+
+class PriceService {
+  private cache = new Map<string, TokenPrice>()
+  
+  async getTokenPriceUSD(tokenAddress: string, chainId: number): Promise<number | null> {
+    const cacheKey = `${chainId}-${tokenAddress.toLowerCase()}`
+    
+    // Check cache first
+    const cached = this.cache.get(cacheKey)
+    if (cached && Date.now() - cached.lastUpdated.getTime() < VALIDATION_RULES.PRICE_CACHE_DURATION_MS) {
+      return cached.usd
+    }
+    
+    try {
+      // Map token address to CoinGecko ID (maintained in our token list)
+      const coingeckoId = await this.getCoinGeckoId(tokenAddress, chainId)
+      if (!coingeckoId) return null
+      
+      // Fetch from CoinGecko free API
+      const response = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoId}&vs_currencies=usd`,
+        { signal: AbortSignal.timeout(VALIDATION_RULES.PRICE_FETCH_TIMEOUT_MS) }
+      )
+      
+      const data = await response.json()
+      const price = data[coingeckoId]?.usd
+      
+      if (price) {
+        this.cache.set(cacheKey, { usd: price, lastUpdated: new Date() })
+        return price
+      }
+      
+      return null
+    } catch (error) {
+      console.warn('Failed to fetch token price:', error)
+      return null
+    }
+  }
+}
+```
+
+**Validation with Graceful Fallback:**
+```typescript
+async function validatePaymentAmount(
+  tokenAddress: string,
+  tokenSymbol: string,
+  amount: bigint,
+  decimals: number,
+  chainId: number
+): Promise<ValidationResult> {
+  const normalizedAmount = Number(amount) / (10 ** decimals)
+  
+  // Try to get USD price
+  const priceUSD = await priceService.getTokenPriceUSD(tokenAddress, chainId)
+  
+  if (priceUSD) {
+    // We have a price - validate USD amounts
+    const amountUSD = normalizedAmount * priceUSD
+    
+    if (amountUSD < VALIDATION_RULES.MIN_AMOUNT_USD) {
+      return { 
+        valid: false, 
+        error: `Amount too small. Minimum: $${VALIDATION_RULES.MIN_AMOUNT_USD} (${(VALIDATION_RULES.MIN_AMOUNT_USD / priceUSD).toFixed(4)} ${tokenSymbol})` 
+      }
+    }
+    
+    if (amountUSD > VALIDATION_RULES.MAX_AMOUNT_USD) {
+      return { 
+        valid: false, 
+        error: `Amount too large. Maximum: $${VALIDATION_RULES.MAX_AMOUNT_USD} (${(VALIDATION_RULES.MAX_AMOUNT_USD / priceUSD).toFixed(4)} ${tokenSymbol})` 
+      }
+    }
+    
+    return { valid: true, amountUSD }
+  } else {
+    // No price available - allow but warn
+    return { 
+      valid: true, 
+      warning: `Unable to verify USD value for ${tokenSymbol}. Please ensure the amount is reasonable.`,
+      amountUSD: null
+    }
+  }
+}
+```
+
+**UI Implementation:**
+```svelte
+<!-- In CreateRequestForm.svelte -->
+<script>
+  let validationResult = await validatePaymentAmount(...)
+  
+  if (!validationResult.valid) {
+    // Show error - prevent form submission
+    errorMessage = validationResult.error
+  } else if (validationResult.warning) {
+    // Show warning but allow submission
+    warningMessage = validationResult.warning
+  } else {
+    // Show USD equivalent for user confirmation
+    usdDisplay = `≈ $${validationResult.amountUSD.toFixed(2)} USD`
+  }
+</script>
+
+{#if errorMessage}
+  <div class="text-red-500">{errorMessage}</div>
+{:else if warningMessage}
+  <div class="text-yellow-500">⚠️ {warningMessage}</div>
+{:else if usdDisplay}
+  <div class="text-gray-500">{usdDisplay}</div>
+{/if}
+```
+
+**Token List Enhancement:**
+```typescript
+// Extend supported_tokens table
+ALTER TABLE supported_tokens 
+ADD COLUMN coingecko_id TEXT,
+ADD COLUMN price_usd DECIMAL(20,8),
+ADD COLUMN price_updated_at TIMESTAMPTZ;
+
+// Popular tokens with CoinGecko IDs
+const TOKEN_METADATA = {
+  '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48': { symbol: 'USDC', coingeckoId: 'usd-coin' },
+  '0xdAC17F958D2ee523a2206206994597C13D831ec7': { symbol: 'USDT', coingeckoId: 'tether' },
+  '0x6B175474E89094C44Da98b954EedeAC495271d0F': { symbol: 'DAI', coingeckoId: 'dai' },
+  '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2': { symbol: 'WETH', coingeckoId: 'weth' },
+  // ... more tokens
+}
+```
+
+### Request Creation Validation
+
+**Required Fields:**
+```typescript
+interface CreateRequestValidation {
+  // Required fields
+  recipientAddress: string    // Must be valid EVM address
+  tokenAddress: string        // Must be in supported tokens list
+  chainId: number            // Must be in supported chains
+  
+  // Optional but validated if provided
+  amount?: string            // If provided, must pass amount validation
+  description?: string       // Max 500 characters
+  expiresAt?: Date          // Must be future date, max 90 days
+}
+```
+
+**Validation Rules:**
+1. **Address Validation**
+   - Must be valid EVM address (0x + 40 hex chars)
+   - Must pass checksum validation
+   - Cannot be zero address
+
+2. **Token Validation**
+   - Must exist in supported_tokens table for the chain
+   - Must be marked as is_active = true
+
+3. **Expiry Validation**
+   - Default: 180 days if not provided
+   - Minimum: 1 hour from creation
+   - Maximum: 365 days from creation (1 year)
+   - UI provides preset options: 1 day, 7 days, 30 days, 180 days, 365 days, or custom
+
+4. **Description Validation**
+   - Optional field
+   - Max 500 characters
+   - Basic HTML/script sanitization
+
+### Payment Fulfillment Validation
+
+**Pre-Payment Checks:**
+```typescript
+interface PaymentValidation {
+  // Request state
+  requestStatus: 'pending'      // Must be pending
+  requestNotExpired: boolean    // Current time < expiresAt
+  
+  // Payer validation
+  sufficientBalance: boolean    // Payer balance >= amount
+  correctNetwork: boolean       // Payer on same chain as request
+  
+  // Amount validation (for flexible amounts)
+  amountValid: boolean         // Passes USD min/max if price available
+  amountWarning?: string       // Warning if no price data
+}
+```
+
+### Error Messages
+
+**User-Friendly Messages:**
+```typescript
+const ERROR_MESSAGES = {
+  AMOUNT_TOO_SMALL: "Minimum amount: ${min} USD",
+  AMOUNT_TOO_LARGE: "Maximum amount: ${max} USD", 
+  INSUFFICIENT_BALANCE: "Insufficient {token} balance",
+  WRONG_NETWORK: "Please switch to {chainName}",
+  REQUEST_EXPIRED: "This payment request has expired",
+  REQUEST_ALREADY_PAID: "Already paid",
+  INVALID_ADDRESS: "Invalid wallet address",
+  TOKEN_NOT_SUPPORTED: "{token} not supported on {chainName}",
+}
+```
+
+**Expiry Date UI Implementation:**
+```svelte
+<!-- In CreateRequestForm.svelte -->
+<script>
+  const EXPIRY_PRESETS = [
+    { label: '1 day', days: 1 },
+    { label: '1 week', days: 7 },
+    { label: '1 month', days: 30 },
+    { label: '6 months', days: 180, default: true },
+    { label: '1 year', days: 365 },
+    { label: 'Custom', days: null }
+  ]
+  
+  let selectedPreset = EXPIRY_PRESETS.find(p => p.default)
+  let customDate = null
+  let expiresAt = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000) // Default 180 days
+  
+  function updateExpiry(preset) {
+    if (preset.days) {
+      expiresAt = new Date(Date.now() + preset.days * 24 * 60 * 60 * 1000)
+    }
+  }
+</script>
+
+<div class="expiry-selector">
+  <label>Request expires in:</label>
+  <div class="preset-buttons">
+    {#each EXPIRY_PRESETS as preset}
+      <button 
+        class:selected={selectedPreset === preset}
+        on:click={() => { selectedPreset = preset; updateExpiry(preset); }}
+      >
+        {preset.label}
+      </button>
+    {/each}
+  </div>
+  
+  {#if selectedPreset.days === null}
+    <input 
+      type="datetime-local" 
+      bind:value={customDate}
+      min={new Date(Date.now() + 3600000).toISOString().slice(0, 16)} // Min: 1 hour
+      max={new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16)} // Max: 1 year
+    />
+  {/if}
+  
+  <p class="text-sm text-gray-500">
+    Expires on: {expiresAt.toLocaleDateString()} at {expiresAt.toLocaleTimeString()}
+  </p>
+</div>
+```
+
 ### 🟡 Design Decisions Needed
 
-5. **Request Validation**
-   - Minimum/maximum amounts
-   - Supported tokens per network
-   - Request expiry defaults
+5. **Additional Validation Considerations**
+   - How to handle tokens without CoinGecko listings?
+   - Should we allow custom tokens not in our list?
+   - Rate limiting for API calls to avoid hitting CoinGecko limits?
 
 6. **User Experience**
    - Mobile responsiveness requirements

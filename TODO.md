@@ -5,10 +5,10 @@
 ### High Priority Clarifications
 - [x] **Supabase Setup**: Confirm Supabase project is set up with API keys and connection details
 - [x] **Token Support**: Specify which ERC20 tokens to support initially (USDC, USDT, DAI only?)
-- [ ] **Payment Validation**: Define minimum/maximum payment amounts and validation rules
+- [x] **Payment Validation**: Define minimum/maximum payment amounts and validation rules
 
 ### Medium Priority Clarifications
-- [ ] **Request Expiry**: Confirm default request expiry period (e.g., 7 days, 30 days)
+- [x] **Request Expiry**: Confirm default request expiry period (e.g., 7 days, 30 days)
 
 ---
 
