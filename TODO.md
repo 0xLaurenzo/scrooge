@@ -3,8 +3,8 @@
 ## 🔍 Items Requiring Clarification (MUST BE RESOLVED FIRST)
 
 ### High Priority Clarifications
-- [ ] **Supabase Setup**: Confirm Supabase project is set up with API keys and connection details
-- [ ] **Token Support**: Specify which ERC20 tokens to support initially (USDC, USDT, DAI only?)
+- [x] **Supabase Setup**: Confirm Supabase project is set up with API keys and connection details
+- [x] **Token Support**: Specify which ERC20 tokens to support initially (USDC, USDT, DAI only?)
 - [ ] **Payment Validation**: Define minimum/maximum payment amounts and validation rules
 
 ### Medium Priority Clarifications
@@ -15,9 +15,9 @@
 ## Phase 1: Foundation Setup (Start Here After Clarifications)
 
 ### Database & Infrastructure
-- [ ] Set up Supabase database with payment_requests table and RLS policies
-- [ ] Create supported_tokens table and populate with initial token list from Uniswap
-- [ ] Implement Supabase client configuration in the SvelteKit app
+- [x] Set up Supabase database with payment_requests table and RLS policies
+- [x] Create supported_tokens table and populate with initial token list from Uniswap
+- [x] Implement Supabase client configuration in the SvelteKit app
 
 ### Core Services
 - [ ] Create RequestService for CRUD operations on payment requests
