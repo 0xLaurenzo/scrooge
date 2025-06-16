@@ -11,6 +11,20 @@
     "deploy:mainnet": "forge script script/Deploy.s.sol --rpc-url mainnet --broadcast --verify",
     "clean": "forge clean",
     "fmt": "forge fmt",
-    "snapshot": "forge snapshot"
+    "snapshot": "forge snapshot",
+    "lint": "solhint 'src/**/*.sol' 'script/**/*.sol' 'test/**/*.sol'",
+    "lint:fix": "solhint 'src/**/*.sol' 'script/**/*.sol' 'test/**/*.sol' --fix"
+  },
+  "description": "**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "solhint": "^5.1.0"
   }
 }
