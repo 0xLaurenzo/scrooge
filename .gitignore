@@ -11,7 +11,13 @@ node_modules
 /.svelte-kit
 /build
 /out
+out
+
+# Foundry artifacts
+contracts/out/
+contracts/cache/
 /dist
+
 
 # OS
 .DS_Store
